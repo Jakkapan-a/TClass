@@ -21,6 +21,9 @@ namespace TClass
             public delegate void VideoFrameHeader(Bitmap bitmap);
             public event VideoFrameHeader OnFrameHeader;
 
+            public delegate void VideoFrameHeaderMat(OpenCvSharp.Mat mat);
+            public event VideoFrameHeaderMat OnFrameHeaderMat;
+
             public delegate void VideoCaptureStop();
             public event VideoCaptureStop OnVideoStop;
 
@@ -69,22 +72,35 @@ namespace TClass
 
             public void Start(int device)
             {
-                if (_videoCapture != null)
+                try
                 {
-                    _videoCapture.Dispose();
+                    if (_videoCapture != null)
+                    {
+                        _videoCapture.Dispose();
+                    }
+
+                    _videoCapture = new OpenCvSharp.VideoCapture(device);
+
+                    if (!_videoCapture.Open(device))
+                    {
+                        OnError?.Invoke("Cannot open the video capture device.");
+                        return;
+                    }
+
+                    setFrame(width, height);
+                    _isRunning = true;
+                    _onStarted = true;
+
+                    if (_timer != null)
+                    {
+                        _timer.Dispose();
+                    }
+                    _timer = new System.Threading.Timer(FrameCapture, null, 0, _frameRate);
                 }
-
-                _videoCapture = new OpenCvSharp.VideoCapture(device);
-                _videoCapture.Open(device);
-                setFrame(width, height);
-                _isRunning = true;
-                _onStarted = true;
-
-                if (_timer != null)
+                catch (Exception ex)
                 {
-                    _timer.Dispose();
+                    OnError?.Invoke($"Error while starting video capture: {ex.Message}");
                 }
-                _timer = new System.Threading.Timer(FrameCapture, null, 0, _frameRate);
             }
 
             private void FrameCapture(object state)
@@ -104,12 +120,16 @@ namespace TClass
                             {
                                 OnError?.Invoke("Frame is empty");
                             }
-                            using (Bitmap bitmap = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(frame))
+                            else
                             {
-                                OnFrameHeader?.Invoke(bitmap);
+                                using (Bitmap bitmap = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(frame))
+                                {
+                                    OnFrameHeader?.Invoke(bitmap);
+                                }
+
+                                OnFrameHeaderMat?.Invoke(frame);
                             }
                         }
-
                     }
                 }
                 catch (Exception ex)
